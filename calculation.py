@@ -9,6 +9,7 @@
 from openpyxl import load_workbook
 from openpyxl import Workbook
 import sys
+import xlaxop, re
 
 class AchivInd:
 
@@ -91,25 +92,34 @@ class AchivInd:
                     self.achiIndInfoDict['target'+str(firstDictInd+1)]['factor'+str(factorCnt)] = {}
                     self.achiIndInfoDict['target'+str(firstDictInd+1)]['factor'+str(factorCnt)]['source'] = sourceFlag
                     self.achiIndInfoDict['target'+str(firstDictInd+1)]['factor'+str(factorCnt)]['weight'] = weightVal                    
-            factorPos = chr(ord(factorPos[0])+1)+factorPos[1:]#didn't consider characeter above Z, such as AA, AB, ...
+            #factorPos = chr(ord(factorPos[0])+1)+factorPos[1:]#didn't consider characeter above Z, such as AA, AB, ...
+            factorPos = xlaxop.colInc(factorPos, 1)
             inCell = self.confInfo[factorPos]
         self.factorCnt = factorCnt
 
     def __build3rdLayerDict(self):#{target1:{factor1:{source:'kaoshi.xlsx',weight:0.7},factor2:{source:'pingshi.xlsx',weight:0.7}}, target2:{...}, ...}
-        charStartInd = self.factorStartPos[0]#didn't consider characeter above Z, such as AA, AB, ...
-        numStartInd = self.targetStartPos[1:]
+        #charStartInd = self.factorStartPos[0]#didn't consider characeter above Z, such as AA, AB, ...
+        #numStartInd = self.targetStartPos[1:]
+        m1=re.match(r'^([A-Z]+)(\d+)$', self.factorStartPos)
+        m2=re.match(r'^([A-Z]+)(\d+)$', self.targetStartPos)
+        charStartInd = m1.group(1)
+        numStartInd = m2.group(2)
         numInd = int(numStartInd)+len(self.achiIndInfoDict)+1
-        #sorted(self.achiIndInfoDict)
+        #sorted(self.achiIndInfoDict)#Perhaps needed if default is not sorted
         for firstLayerKey in self.achiIndInfoDict:
-            #charInd = charStartInd
-            #sorted(self.achiIndInfoDict[firstLayerKey])
+            #sorted(self.achiIndInfoDict[firstLayerKey])#Perhaps needed if default is not sorted
             for secondLayerKey in self.achiIndInfoDict[firstLayerKey]:
                 charInd = charStartInd
                 for k in range(self.attributeCnt):
                     numIndToStr = str(numInd)
                     dpdtAttributeVal = self.confInfo[charInd+numIndToStr].value
+                    if k == 1:#to support such as 3,3,5 instead of 11 in attribute2 fields
+                        dpdtAttributeVal = str(dpdtAttributeVal)
+                        dpdtAttributeVal = dpdtAttributeVal.replace('，',',').split(',')
+                        dpdtAttributeVal = sum([int(float(i)) for i in dpdtAttributeVal])
                     self.achiIndInfoDict[firstLayerKey][secondLayerKey]['attribute'+str(k+1)]=dpdtAttributeVal#k=0:dpdtInd(the index list dependent to), k=1:dpdtPct(the percentage(X100) dependent to), k=2:dpdtPos(#the position dependent to)
-                    charInd = chr(ord(charInd)+1)#didn't consider characeter above Z, such as AA, AB, ...
+                    #charInd = chr(ord(charInd)+1)#didn't consider characeter above Z, such as AA, AB, ...
+                    charInd = xlaxop.colAlphaInc(charInd, 1)
                 numInd += 1
             numInd += 1
             
@@ -128,7 +138,8 @@ class AchivInd:
         scoreSum = 0
         idCnt = 0
         curPos = verRng[0]
-        beyondPos = verRng[1][0]+str(int(verRng[1][1:])+1)
+        #beyondPos = verRng[1][0]+str(int(verRng[1][1:])+1)#assuming only A-Z column supported and exclued AA, AB, ....
+        beyondPos = xlaxop.rowInc(verRng[1], 1)
         while curPos != beyondPos:
             if wsSrc[curPos].value not in excludeIds:
                 idCnt += 1
@@ -137,8 +148,10 @@ class AchivInd:
                     if score == None:#read out None if blank
                         score = 0
                     scoreSum += score
-            horInds = [ind[0]+str(int(ind[1:])+1) for ind in horInds]
-            curPos = curPos[0]+str(int(curPos[1:])+1)
+            #horInds = [ind[0]+str(int(ind[1:])+1) for ind in horInds]
+            horInds = [xlaxop.rowInc(ind, 1) for ind in horInds]
+            #curPos = curPos[0]+str(int(curPos[1:])+1)
+            curPos = xlaxop.rowInc(curPos, 1)
         return scoreSum/idCnt#average of the score compared with benchmark score
     
     def __horIndsGen(self, horIndsStart, horIndsStr):
@@ -147,8 +160,8 @@ class AchivInd:
         horIndsStr = horIndsStr.replace('，',',').split(',')
         startPos = int(horIndsStr[0])
         for i in horIndsStr:
-            #horIndsPos.append(chr(ord(horIndsStart[0])+int(i)-1)+horIndsStart[1])#didn't support such as AA, AB, ....
-            horIndsPos.append(chr(ord(horIndsStart[0])+int(i)-startPos)+horIndsStart[1])#didn't support such as AA, AB, ....
+            #horIndsPos.append(chr(ord(horIndsStart[0])+int(i)-startPos)+horIndsStart[1:])#didn't support such as AA, AB, ....
+            horIndsPos.append(xlaxop.colInc(horIndsStart,int(i)-startPos))
         return horIndsPos
     
     def __targetClassScore(self):
@@ -168,7 +181,7 @@ class AchivInd:
                 horIndsStr = self.achiIndInfoDict[target][factor]['attribute1']
                 horInds = self.__horIndsGen(horIndsStart, horIndsStr)
                 factorClassScore = self.__classScoreCal(wsSrc, verRng, horInds, excludeIds)
-                if (self.achiIndInfoDict[target][factor]['source']!=1):
+                if (self.achiIndInfoDict[target][factor]['source']!=1):#usual score need to be rectified based on the times of homework
                     factorClassScore = factorClassScore/len(horInds)/100*self.achiIndInfoDict[target][factor]['attribute2']
                 self.targetClassScoreDict[target] += self.achiIndInfoDict[target][factor]['weight']*factorClassScore
 
